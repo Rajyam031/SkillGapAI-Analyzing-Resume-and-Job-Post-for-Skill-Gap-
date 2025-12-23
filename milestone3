@@ -1,0 +1,88 @@
+import streamlit as st
+import matplotlib.pyplot as plt
+import pandas as pd 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity 
+import re
+skill_list = [ "python", "java", "c", "sql", "machine learning", "deep learning", "data science", "data analysis", "power bi", "tableau", "cloud computing", "devops", "cybersecurity", "communication", "teamwork" ]
+def extract_skills(text):
+    text = text.lower() 
+    found = [] 
+    for skill in skill_list:
+        if re.search(r"\b" + re.escape(skill) + r"\b", text):
+            found.append(skill.title()) 
+    return list(set(found))
+
+st.set_page_config(page_title="Skill Gap Analyzer", layout="centered") 
+st.title("Milestone 3 – Skill Gap Analysis")
+st.write("Upload Resume and Job Description to see skill match, percentage, pie chart and heatmap")
+
+resume_file = st.file_uploader("Upload Resume (TXT)", type=["txt"]) 
+jd_file = st.file_uploader("Upload Job Description (TXT)", type=["txt"])
+
+if resume_file and jd_file:
+    resume_text = resume_file.read().decode("utf-8")
+    jd_text = jd_file.read().decode("utf-8")
+
+    resume_skills = extract_skills(resume_text)
+    jd_skills = extract_skills(jd_text)
+
+    st.subheader("Extracted Skills")
+    st.write("Resume Skills:", resume_skills)
+    st.write("Job Description Skills:", jd_skills)
+
+    if resume_skills and jd_skills:
+        vectorizer = TfidfVectorizer()
+        vectors = vectorizer.fit_transform(resume_skills + jd_skills)
+        resume_vec = vectors[:len(resume_skills)]
+        jd_vec = vectors[len(resume_skills):]
+        similarity_matrix = cosine_similarity(resume_vec, jd_vec)
+        similarity_df = pd.DataFrame(
+            similarity_matrix,
+            index=resume_skills,
+            columns=jd_skills
+        )
+        threshold = 0.4
+        matched = []
+        missing = []
+
+        for j, skill in enumerate(jd_skills):
+            if similarity_matrix[:, j].max() >= threshold:
+                matched.append(skill)
+            else:
+                missing.append(skill)
+        match_percentage = (len(matched) / len(jd_skills)) * 100
+        st.subheader("Overall Match Percentage")
+        st.success(f"Match Percentage: {match_percentage:.0f}%")
+        st.subheader("Matched Skills")
+        st.write(matched)
+
+        st.subheader("Missing Skills")
+        st.write(missing)
+        st.subheader("Skill Match Distribution")
+        fig1, ax1 = plt.subplots()
+        ax1.pie(
+            [len(matched), len(missing)],
+            labels=["Matched Skills", "Missing Skills"],
+            autopct="%1.1f%%",
+            startangle=90
+        )
+        ax1.axis("equal")
+        st.pyplot(fig1)
+        st.subheader("Skill Similarity Heatmap")
+        fig2, ax2 = plt.subplots()
+        cax = ax2.imshow(similarity_matrix, cmap="viridis")
+        ax2.set_xticks(range(len(jd_skills)))
+        ax2.set_yticks(range(len(resume_skills)))
+        ax2.set_xticklabels(jd_skills, rotation=45, ha="right")
+        ax2.set_yticklabels(resume_skills)
+        fig2.colorbar(cax)
+        st.pyplot(fig2)
+        st.subheader("Skill Similarity Matrix")
+        st.dataframe(similarity_df.round(2))
+
+    else:
+        st.warning("No skills detected. Please check input files.")
+
+else:
+    st.info("Please upload both Resume and Job Description TXT files")
